@@ -180,6 +180,8 @@ json_t* json_load_url(char* cfg_url, json_error_t *err);
 void sha256_init(uint32_t *state);
 void sha256_transform(uint32_t *state, const uint32_t *block, int swap);
 void sha256d(unsigned char *hash, const unsigned char *data, int len);
+void sha3_256(const char *input, const int in_size, char *output);
+void in_debug(const char *in, int lensz);
 
 #ifdef USE_ASM
 #if defined(__ARM_NEON__) || defined(__i386__) || defined(__x86_64__)
@@ -258,6 +260,7 @@ int scanhash_x14(int thr_id, struct work *work, uint32_t max_nonce, uint64_t *ha
 int scanhash_x15(int thr_id, struct work *work, uint32_t max_nonce, uint64_t *hashes_done);
 int scanhash_x16r(int thr_id, struct work *work, uint32_t max_nonce, uint64_t *hashes_done);
 int scanhash_x16rv2(int thr_id, struct work *work, uint32_t max_nonce, uint64_t *hashes_done);
+int scanhash_x16rs(int thr_id, struct work *work, uint32_t max_nonce, uint64_t *hashes_done);
 int scanhash_x16s(int thr_id, struct work *work, uint32_t max_nonce, uint64_t *hashes_done);
 int scanhash_x17(int thr_id, struct work *work, uint32_t max_nonce, uint64_t *hashes_done);
 int scanhash_x20r(int thr_id, struct work *work, uint32_t max_nonce, uint64_t *hashes_done);
@@ -400,6 +403,7 @@ void cpu_getmodelid(char *outbuf, size_t maxsz);
 float cpu_temp(int core);
 
 struct work {
+	uint8_t udata[128];
 	uint32_t data[48];
 	uint32_t target[8];
 
@@ -429,6 +433,7 @@ struct stratum_job {
 	unsigned char nbits[4];
 	unsigned char ntime[4];
 	unsigned char extra[64]; // like lbry claimtrie
+	int height;
 	bool clean;
 	double diff;
 };
@@ -559,6 +564,7 @@ void x13hash(void *output, const void *input);
 void x14hash(void *output, const void *input);
 void x15hash(void *output, const void *input);
 void x16r_hash(void *output, const void *input);
+void x16rs_hash(const uint32_t height, const char* input_hash, char* output_hash);
 void x16rv2_hash(void *output, const void *input);
 void x16s_hash(void *output, const void *input);
 void x17hash(void *output, const void *input);

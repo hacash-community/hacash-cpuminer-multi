@@ -41,6 +41,8 @@
 #include <libgen.h>
 #endif
 
+#include <sha3/sph_sha3.h>
+
 #include "miner.h"
 #include "elist.h"
 
@@ -780,6 +782,14 @@ static bool b58dec(unsigned char *bin, size_t binsz, const char *b58)
 out:
 	free(outi);
 	return rc;
+}
+
+void sha3_256(const char *input, const int in_size, char *output)
+{
+    sha3_ctx ctx;
+    rhash_sha3_256_init(&ctx);
+    rhash_sha3_update(&ctx, input, in_size);
+    rhash_sha3_final(&ctx, output);
 }
 
 static int b58check(unsigned char *bin, size_t binsz, const char *b58)
@@ -1679,6 +1689,16 @@ static uint32_t getblocheight(struct stratum_ctx *sctx)
 	return height;
 }
 
+void in_debug(const char *in, int lensz)
+{
+    char outp[768];
+    memset(outp, 0, sizeof(outp));
+    for (int i=0; i<lensz; i++) {
+        sprintf(outp+i*2, "%02hhx", in[i]);
+    }
+    printf("%s\n", outp);
+}
+
 static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 {
 	char algo[64] = { 0 };
@@ -1686,31 +1706,20 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	const char *extradata = NULL;
 	size_t coinb1_size, coinb2_size;
 	bool clean, ret = false;
-	int merkle_count, i, p=0;
-	bool has_claim, has_roots;
+	int merkle_count, i, p=0, height;
+	bool has_height;
 	json_t *merkle_arr;
 	uchar **merkle;
 
 	get_currentalgo(algo, sizeof(algo));
-	has_claim = strcmp(algo, "lbry") == 0 && json_array_size(params) == 10;
-	has_roots = strcmp(algo, "phi2") == 0 && json_array_size(params) == 10;
+	has_height = strcmp(algo, "x16rs") == 0 && json_array_size(params) == 10;
+	if (!has_height) {
+		applog(LOG_ERR, "Incompatible stratum: lacks height param");
+                goto out;
+	}
 
 	job_id = json_string_value(json_array_get(params, p++));
 	prevhash = json_string_value(json_array_get(params, p++));
-	if (has_claim) {
-		extradata = json_string_value(json_array_get(params, p++));
-		if (!extradata || strlen(extradata) != 64) {
-			applog(LOG_ERR, "Stratum notify: invalid claim parameter");
-			goto out;
-		}
-	}
-	else if (has_roots) {
-		extradata = json_string_value(json_array_get(params, p++));
-		if (!extradata || strlen(extradata) != 128) {
-			applog(LOG_ERR, "Stratum notify: invalid UTXO root parameter");
-			goto out;
-		}
-	}
 	coinb1 = json_string_value(json_array_get(params, p++));
 	coinb2 = json_string_value(json_array_get(params, p++));
 	merkle_arr = json_array_get(params, p++);
@@ -1720,6 +1729,7 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	version = json_string_value(json_array_get(params, p++));
 	nbits = json_string_value(json_array_get(params, p++));
 	ntime = json_string_value(json_array_get(params, p++));
+	height = json_integer_value(json_array_get(params, p++));
 	clean = json_is_true(json_array_get(params, p));
 
 	if (!job_id || !prevhash || !coinb1 || !coinb2 || !version || !nbits || !ntime ||
@@ -1746,6 +1756,7 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 
 	coinb1_size = strlen(coinb1) / 2;
 	coinb2_size = strlen(coinb2) / 2;
+	sctx->job.height = height;
 	sctx->job.coinbase_size = coinb1_size + sctx->xnonce1_size +
 	                          sctx->xnonce2_size + coinb2_size;
 	sctx->job.coinbase = (uchar*) realloc(sctx->job.coinbase, sctx->job.coinbase_size);
@@ -1759,9 +1770,6 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	free(sctx->job.job_id);
 	sctx->job.job_id = strdup(job_id);
 	hex2bin(sctx->job.prevhash, prevhash, 32);
-
-	if (has_claim) hex2bin(sctx->job.extra, extradata, 32);
-	if (has_roots) hex2bin(sctx->job.extra, extradata, 64);
 
 	sctx->bloc_height = getblocheight(sctx);
 

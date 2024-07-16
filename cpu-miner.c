@@ -27,6 +27,8 @@
 #include <jansson.h>
 #include <openssl/sha.h>
 
+#include <sha3/sph_sha3.h>
+
 #ifdef _MSC_VER
 #include <windows.h>
 #include <stdint.h>
@@ -136,6 +138,7 @@ enum algos {
 	ALGO_X15,         /* X15 */
 	ALGO_X16R,        /* X16R */
 	ALGO_X16RV2,      /* X16Rv2 */
+	ALGO_X16RS,
 	ALGO_X16S,
 	ALGO_X17,         /* X17 */
 	ALGO_X20R,
@@ -208,6 +211,7 @@ static const char *algo_names[] = {
 	"x15",
 	"x16r",
 	"x16rv2",
+	"x16rs",
 	"x16s",
 	"x17",
 	"x20r",
@@ -377,6 +381,7 @@ Options:\n\
                           x15          X15\n\
                           x16r         X16R\n\
                           x16rv2       X16Rv2 (Raven / Trivechain)\n\
+			  x16rs        X16RS (Hacash)\n\
                           x16s         X16S (Pigeon)\n\
                           x17          X17\n\
                           x20r         X20R\n\
@@ -1722,6 +1727,63 @@ err_out:
 	return false;
 }
 
+static void hacash_stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
+{
+	uint32_t extraheader[32] = { 0 };
+	uchar merkle_root[64] = { 0 };
+	int i, headersize = 0;
+
+	pthread_mutex_lock(&sctx->work_lock);
+
+	free(work->job_id);
+	work->job_id = strdup(sctx->job.job_id);
+	work->xnonce2_len = sctx->xnonce2_size;
+	work->xnonce2 = (uchar*) realloc(work->xnonce2, sctx->xnonce2_size);
+	memcpy(work->xnonce2, sctx->job.xnonce2, sctx->xnonce2_size);
+	sha3_256(sctx->job.coinbase, sctx->job.coinbase_size, merkle_root);
+
+	/* Increment extranonce2 */
+	for (size_t t = 0; t < sctx->xnonce2_size && !(++sctx->job.xnonce2[t]); t++)
+			;
+
+	work->height = sctx->job.height;
+
+	// assemble 89 byte header
+	memset(work->udata, 0, 128);
+	work->udata[0] = (uint8_t) 1;                        //version
+	uint32_t flip_height = be32dec(&sctx->job.height);
+	memcpy(&work->udata[2], &flip_height, 4);            //height
+	memcpy(&work->udata[7], &sctx->job.ntime, 4);        //ntime
+	memcpy(&work->udata[11], &sctx->job.prevhash, 32);   //prevhash
+	memcpy(&work->udata[43], &merkle_root, 32);          //merkle
+	work->udata[78] = (uint8_t) 1;                       //txcount
+	memcpy(&work->udata[83], &sctx->job.nbits, 4);       //nbits
+	//in_debug(work->udata, 89);
+
+	if (opt_showdiff || opt_max_diff > 0.)
+			calc_network_diff(work);
+
+	pthread_mutex_unlock(&sctx->work_lock);
+
+	if (opt_debug && opt_algo != ALGO_DECRED && opt_algo != ALGO_SIA) {
+			char *xnonce2str = abin2hex(work->xnonce2, work->xnonce2_len);
+			applog(LOG_DEBUG, "DEBUG: job_id='%s' extranonce2=%s ntime=%08x",
+							work->job_id, xnonce2str, swab32(work->data[17]));
+			free(xnonce2str);
+	}
+
+	work_set_target(work, sctx->job.diff / (256.0 * opt_diff_factor));
+
+	if (stratum_diff != sctx->job.diff) {
+			char sdiff[32] = { 0 };
+			// store for api stats
+			stratum_diff = sctx->job.diff;
+			if (opt_showdiff && work->targetdiff != stratum_diff)
+					snprintf(sdiff, 32, " (%.5f)", work->targetdiff);
+			applog(LOG_WARNING, "Stratum difficulty set to %g%s", stratum_diff, sdiff);
+	}
+}
+
 static void stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 {
 	uint32_t extraheader[32] = { 0 };
@@ -1881,6 +1943,7 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 			case ALGO_XEVAN:
 			case ALGO_X16R:
 			case ALGO_X16RV2:
+			case ALGO_X16RS:
 			case ALGO_X16S:
 			case ALGO_X20R:
 				work_set_target(work, sctx->job.diff / (256.0 * opt_diff_factor));
@@ -1902,6 +1965,9 @@ static void stratum_gen_work(struct stratum_ctx *sctx, struct work *work)
 			applog(LOG_WARNING, "Stratum difficulty set to %g%s", stratum_diff, sdiff);
 		}
 	}
+
+        if (opt_algo == ALGO_X16RS)
+                return hacash_stratum_gen_work(sctx, work);
 }
 
 bool rpc2_stratum_job(struct stratum_ctx *sctx, json_t *params)
@@ -2241,6 +2307,7 @@ static void *miner_thread(void *userdata)
 			case ALGO_X15:
 			case ALGO_X16R:
 			case ALGO_X16RV2:
+			case ALGO_X16RS:
 			case ALGO_X16S:
 			case ALGO_X17:
 			case ALGO_X20R:
@@ -2457,6 +2524,9 @@ static void *miner_thread(void *userdata)
 			break;
 		case ALGO_X20R:
 			rc = scanhash_x20r(thr_id, &work, max_nonce, &hashes_done);
+			break;
+		case ALGO_X16RS:
+			rc = scanhash_x16rs(thr_id, &work, max_nonce, &hashes_done);
 			break;
 		case ALGO_X16S:
 			rc = scanhash_x16s(thr_id, &work, max_nonce, &hashes_done);
