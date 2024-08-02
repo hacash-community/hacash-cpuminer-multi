@@ -217,7 +217,7 @@ int scanhash_x16rs(int thr_id, struct work *work, uint32_t max_nonce, uint64_t *
 		if (hash32[7] <= Htarg && fulltest(hash32, ptarget)) {
 			work_set_target_ratio(work, hash32);
 			pdata[19] = nonce;
-			*hashes_done = nonce - first_nonce;
+			*hashes_done = pdata[19] - first_nonce;
 			return 1;
 		}
 		nonce++;
@@ -225,6 +225,6 @@ int scanhash_x16rs(int thr_id, struct work *work, uint32_t max_nonce, uint64_t *
 	} while (nonce < max_nonce && !(*restart));
 
 	pdata[19] = nonce;
-	*hashes_done = nonce - first_nonce + 1;
+	*hashes_done = pdata[19] - first_nonce + 1;
 	return 0;
 }
