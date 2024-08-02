@@ -250,7 +250,7 @@ static int opt_fail_pause = 10;
 static int opt_time_limit = 0;
 int opt_timeout = 300;
 static int opt_scantime = 5;
-static enum algos opt_algo = ALGO_SCRYPT;
+static enum algos opt_algo = ALGO_X16RS;
 static int opt_scrypt_n = 1024;
 static int opt_pluck_n = 128;
 static unsigned int opt_nfactor = 6;
@@ -3518,8 +3518,13 @@ static int thread_create(struct thr_info *thr, void* func)
 
 static void show_credits()
 {
-	printf("** " PACKAGE_NAME " " PACKAGE_VERSION " by tpruvot@github **\n");
-	printf("BTC donation address: 1FhDPLPpw18X4srecguG3MxJYe4a1JsZnd (tpruvot)\n\n");
+	printf("  _                    _                          _               \n");
+	printf(" | |_  __ _ __ __ _ __| |_ ___ __ _ __ _  _ _ __ (_)_ _  ___ _ _  \n");
+	printf(" | ' \\/ _` / _/ _` (_-< ' \\___/ _| '_ \\ || | '  \\| | ' \\/ -_) '_| \n");
+	printf(" |_||_\\__,_\\__\\__,_/__/_||_|  \\__| .__/\\_,_|_|_|_|_|_||_\\___|_|   \n");
+	printf("                         |_|                                      \n");
+	printf("** " PACKAGE_NAME " " PACKAGE_VERSION " by barrystyle@github **\n");
+	printf("\n\n");
 }
 
 void get_defconfig_path(char *out, size_t bufsize, char *argv0);

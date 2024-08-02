@@ -1,4 +1,4 @@
-AC_INIT([cpuminer-multi], [1.3.7])
+AC_INIT([hacash-cpuminer-multi], [1.0.0])
 
 AC_PREREQ([2.59c])
 AC_CANONICAL_SYSTEM
